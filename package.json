@@ -1,0 +1,45 @@
+{
+  "name": "dr-marcelopsiquiatra",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@10.33.0",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint .",
+    "typecheck": "node scripts/ensure-next-route-types.mjs && tsc --noEmit",
+    "db:apply": "node scripts/apply-supabase-sql.mjs",
+    "mp:check": "node scripts/mercado-pago-check.mjs",
+    "mp:create-plan": "node scripts/mercado-pago-create-plan.mjs",
+    "resend:check": "node scripts/resend-check.mjs",
+    "auth:emails:apply": "node scripts/apply-supabase-auth-email-config.mjs",
+    "auth:emails:dry-run": "node scripts/apply-supabase-auth-email-config.mjs --dry-run"
+  },
+  "dependencies": {
+    "@supabase/ssr": "^0.10.3",
+    "@supabase/supabase-js": "^2.105.4",
+    "clsx": "^2.1.0",
+    "framer-motion": "^11.0.0",
+    "lucide-react": "^0.441.0",
+    "next": "^16.2.4",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "recharts": "^2.12.0",
+    "server-only": "^0.0.1",
+    "tailwind-merge": "^2.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "@types/pg": "^8.20.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "autoprefixer": "^10",
+    "eslint": "^9.0.0",
+    "eslint-config-next": "^16.2.4",
+    "pg": "^8.20.0",
+    "postcss": "^8",
+    "tailwindcss": "^3.4.0",
+    "typescript": "5.9.3"
+  }
+}
