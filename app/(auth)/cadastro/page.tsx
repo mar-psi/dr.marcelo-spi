@@ -7,7 +7,6 @@ import { motion, AnimatePresence } from "framer-motion";
 import { AlertCircle, CheckCircle2, Loader2 } from "lucide-react";
 import { AuthLayout } from "@/components/auth/AuthLayout";
 import { PasswordInput } from "@/components/auth/PasswordInput";
-import { SocialAuthButton } from "@/components/auth/SocialAuthButton";
 import { useAuth } from "@/hooks/useAuth";
 import { validateEmail, validatePassword } from "@/data/auth";
 import { cn } from "@/lib/utils";
@@ -89,17 +88,6 @@ function CadastroContent() {
       subtitle="Comece a aprender hoje mesmo. Sem cartão de crédito."
     >
       <div className="space-y-5">
-
-        {/* Social */}
-        <SocialAuthButton provider="google" action="register" />
-
-        {/* Divider */}
-        <div className="flex items-center gap-3">
-          <div className="flex-1 h-px bg-border-subtle" />
-          <span className="text-xs text-content-disabled">ou cadastre com e-mail</span>
-          <div className="flex-1 h-px bg-border-subtle" />
-        </div>
-
         {/* API Error */}
         <AnimatePresence>
           {error && (

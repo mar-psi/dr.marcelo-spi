@@ -36,7 +36,7 @@ const sections = [
     id: "conta",
     title: "3. Cadastro e Conta do Usuário",
     paragraphs: [
-      `Para utilizar a Plataforma, o Usuário deve criar uma conta fornecendo: nome completo, endereço de e-mail válido e senha. Também é possível se cadastrar via autenticação social (Google).`,
+      `Para utilizar a Plataforma, o Usuário deve criar uma conta fornecendo: nome completo, endereço de e-mail válido e senha.`,
       `**Responsabilidades do Usuário:**
 - Fornecer informações verdadeiras, completas e atualizadas.
 - Manter a confidencialidade de suas credenciais de acesso (e-mail e senha).

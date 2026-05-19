@@ -84,13 +84,6 @@ export function StoryViewer({
     else startTimer();
   }, [paused]);
 
-  // Auto-advance when progress hits 100
-  useEffect(() => {
-    if (progress >= 100) {
-      handleNext();
-    }
-  }, [progress]);
-
   const handleNext = useCallback(() => {
     if (currentIndex < stories.length - 1) {
       setCurrentIndex((p) => p + 1);
@@ -106,6 +99,13 @@ export function StoryViewer({
       setProgress(0);
     }
   }, [currentIndex]);
+
+  // Auto-advance when progress hits 100
+  useEffect(() => {
+    if (progress >= 100) {
+      handleNext();
+    }
+  }, [handleNext, progress]);
 
   // Touch/hold pause
   const handleTouchStart = (e: React.TouchEvent) => {

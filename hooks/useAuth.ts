@@ -25,7 +25,6 @@ interface UseAuthReturn {
   logout: () => Promise<void>;
   forgotPassword: (email: string) => Promise<boolean>;
   resetPassword: (token: string, password: string) => Promise<boolean>;
-  loginWithGoogle: () => Promise<boolean>;
   clearError: () => void;
 }
 
@@ -299,37 +298,6 @@ export function useAuth(): UseAuthReturn {
     []
   );
 
-  const loginWithGoogle = useCallback(async (): Promise<boolean> => {
-    setLoading(true);
-    setError(null);
-    try {
-      if (!hasSupabaseConfig()) {
-        setError("Supabase nao configurado. Preencha as variaveis de ambiente.");
-        return false;
-      }
-
-      const supabase = createSupabaseBrowserClient();
-      const redirectTo =
-        typeof window !== "undefined" ? `${window.location.origin}/auth/callback` : undefined;
-      const { error: oauthError } = await supabase.auth.signInWithOAuth({
-        provider: "google",
-        options: { redirectTo },
-      });
-
-      if (oauthError) {
-        setError(authErrorMessage(oauthError.message));
-        return false;
-      }
-
-      return true;
-    } catch {
-      setError("Erro de conexão. Verifique sua internet.");
-      return false;
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
   return {
     user,
     loading,
@@ -339,7 +307,6 @@ export function useAuth(): UseAuthReturn {
     logout,
     forgotPassword,
     resetPassword,
-    loginWithGoogle,
     clearError,
   };
 }

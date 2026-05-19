@@ -24,15 +24,14 @@ const sections = [
       `**2.1 Dados fornecidos diretamente por você:**`,
       `- **Nome completo** — fornecido no cadastro para identificação na plataforma.
 - **Endereço de e-mail** — utilizado para login, comunicações e recuperação de senha.
-- **Senha** — armazenada de forma criptografada (hash), nunca em texto puro.
-- **Dados de autenticação social** — caso opte por cadastro via Google, recebemos nome e e-mail associados à conta.`,
+- **Senha** — armazenada de forma criptografada (hash), nunca em texto puro.`,
       `**2.2 Dados coletados automaticamente:**`,
       `- **Dados de navegação** — páginas visitadas, tempo de permanência, cliques e interações na Plataforma.
 - **Progresso de aprendizado** — aulas assistidas, porcentagem de conclusão, pontuação em quizzes, XP acumulado e badges conquistados.
 - **Dados do dispositivo** — tipo de navegador, sistema operacional, resolução de tela e tipo de dispositivo (desktop, tablet, celular).
 - **Cookies e tecnologias similares** — utilizados para manter sua sessão ativa, lembrar preferências e analisar o uso da Plataforma.`,
       `**2.3 Dados de pagamento:**`,
-      `- As informações de pagamento (cartão de crédito, PIX) são processadas diretamente pelo provedor de pagamento e **não são armazenadas** em nossos servidores.
+      `- As informações de pagamento por cartão de crédito são processadas diretamente pelo provedor de pagamento e **não são armazenadas** em nossos servidores.
 - Armazenamos apenas o registro de transações (data, valor, status) para controle de assinatura e emissão de comprovantes.`,
     ],
   },
@@ -69,7 +68,7 @@ const sections = [
       `Seus dados poderão ser compartilhados apenas nas seguintes situações:`,
       `- **Provedores de pagamento** — para processar transações financeiras de forma segura.
 - **Serviços de hospedagem e infraestrutura** — para armazenamento e entrega do conteúdo da Plataforma (ex: Vercel, serviços de cloud).
-- **Serviços de autenticação** — Google, para login social.
+- **Serviços de autenticação** — para cadastro, login, confirmação de e-mail e recuperação de senha.
 - **Obrigação legal** — quando exigido por lei, ordem judicial ou autoridade competente.
 - **Proteção de direitos** — quando necessário para proteger nossos direitos, propriedade ou segurança, ou de terceiros.`,
     ],

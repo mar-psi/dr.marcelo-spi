@@ -7,7 +7,6 @@ import { motion, AnimatePresence } from "framer-motion";
 import { AlertCircle, Loader2, CheckCircle2 } from "lucide-react";
 import { AuthLayout } from "@/components/auth/AuthLayout";
 import { PasswordInput } from "@/components/auth/PasswordInput";
-import { SocialAuthButton } from "@/components/auth/SocialAuthButton";
 import { useAuth } from "@/hooks/useAuth";
 import { validateEmail } from "@/data/auth";
 import { getAuthNotice } from "@/lib/auth/notices";
@@ -73,17 +72,6 @@ function LoginContent() {
       subtitle="Acesse sua conta para continuar aprendendo."
     >
       <div className="space-y-5">
-
-        {/* Social */}
-        <SocialAuthButton provider="google" action="login" />
-
-        {/* Divider */}
-        <div className="flex items-center gap-3">
-          <div className="flex-1 h-px bg-border-subtle" />
-          <span className="text-xs text-content-disabled">ou continue com e-mail</span>
-          <div className="flex-1 h-px bg-border-subtle" />
-        </div>
-
         {/* API Error */}
         <AnimatePresence>
           {notice && (
