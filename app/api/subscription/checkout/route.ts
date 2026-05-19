@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
+import { randomUUID } from "node:crypto";
 import { PLAN } from "@/data/subscription";
 import { requireCurrentUser } from "@/lib/auth/session";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import type { Json } from "@/types/database";
 import {
-  createMercadoPagoSubscriptionCheckout,
+  createMercadoPagoSubscription,
   hasMercadoPagoConfig,
   mapMercadoPagoSubscriptionStatus,
 } from "@/lib/payments/mercadopago";
@@ -35,6 +36,7 @@ export async function POST(req: NextRequest) {
     const user = await requireCurrentUser();
     const body = await req.json();
     const { planId, successUrl, cancelUrl } = body;
+    const cardTokenId = typeof body.cardTokenId === "string" ? body.cardTokenId.trim() : "";
 
     if (!planId || planId !== PLAN.id) {
       return NextResponse.json(
@@ -56,6 +58,13 @@ export async function POST(req: NextRequest) {
     if (!successTarget || !cancelTarget) {
       return NextResponse.json(
         { error: "As URLs do checkout precisam apontar para rotas internas do app." },
+        { status: 400 }
+      );
+    }
+
+    if (!cardTokenId) {
+      return NextResponse.json(
+        { error: "Informe os dados do cartao para concluir a assinatura." },
         { status: 400 }
       );
     }
@@ -91,57 +100,67 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    if (
-      existingSubscription?.provider_checkout_url &&
-      existingSubscription.provider === "mercado_pago" &&
-      existingSubscription.status === "suspended"
-    ) {
-      return NextResponse.json({ url: existingSubscription.provider_checkout_url });
-    }
-
-    const checkout = await createMercadoPagoSubscriptionCheckout({
+    const subscription = await createMercadoPagoSubscription({
       userId: user.id,
       payerEmail: user.email,
       planId,
       planName: PLAN.name,
       amount: PLAN.price,
       backUrl: successTarget,
+      cardTokenId,
+      idempotencyKey: `mp-sub-${user.id}-${planId}-${randomUUID()}`,
     });
 
-    await admin.from("subscriptions").insert({
+    const { data: insertedSubscription, error: insertError } = await admin.from("subscriptions").insert({
       user_id: user.id,
       plan_id: planId,
-      status: mapMercadoPagoSubscriptionStatus(checkout.resource.status),
+      status: mapMercadoPagoSubscriptionStatus(subscription.resource.status),
       current_period_start:
-        checkout.resource.auto_recurring?.start_date ?? checkout.resource.date_created ?? null,
-      current_period_end: checkout.resource.next_payment_date ?? null,
+        subscription.resource.auto_recurring?.start_date ?? subscription.resource.date_created ?? null,
+      current_period_end: subscription.resource.next_payment_date ?? null,
       cancel_at_period_end: false,
       provider: "mercado_pago",
       provider_customer_id:
-        checkout.resource.payer_id !== undefined && checkout.resource.payer_id !== null
-          ? String(checkout.resource.payer_id)
+        subscription.resource.payer_id !== undefined && subscription.resource.payer_id !== null
+          ? String(subscription.resource.payer_id)
           : null,
-      provider_subscription_id: checkout.resource.id,
-      external_reference: checkout.externalReference,
-      provider_plan_id: checkout.resource.preapproval_plan_id ?? null,
-      provider_status: checkout.resource.status ?? null,
-      provider_payment_method: checkout.resource.payment_method_id ?? null,
-      provider_payer_email: checkout.resource.payer_email ?? user.email,
-      provider_checkout_url: checkout.checkoutUrl,
+      provider_subscription_id: subscription.resource.id,
+      external_reference: subscription.externalReference,
+      provider_plan_id: subscription.resource.preapproval_plan_id ?? null,
+      provider_status: subscription.resource.status ?? null,
+      provider_payment_method: subscription.resource.payment_method_id ?? null,
+      provider_payer_email: subscription.resource.payer_email ?? user.email,
+      provider_checkout_url: subscription.checkoutUrl,
       metadata: {
         checkoutSuccessUrl: successTarget,
         checkoutCancelUrl: cancelTarget,
-        mercadoPago: toJsonRecord(checkout.resource),
+        mercadoPago: toJsonRecord(subscription.resource),
       },
-    });
+    }).select("id,status").single();
+
+    if (insertError) {
+      throw new Error(insertError.message);
+    }
 
     return NextResponse.json(
-      { url: checkout.checkoutUrl },
+      {
+        ok: true,
+        subscriptionId: insertedSubscription?.id ?? null,
+        status: insertedSubscription?.status ?? null,
+        redirectUrl: successTarget,
+      },
       { status: 200 }
     );
   } catch (error) {
     if (error instanceof Error && error.message === "UNAUTHENTICATED") {
       return NextResponse.json({ error: "Nao autenticado" }, { status: 401 });
+    }
+
+    if (error instanceof Error && error.message.startsWith("Mercado Pago ")) {
+      return NextResponse.json(
+        { error: "Nao foi possivel aprovar o cartao. Confira os dados ou tente outro cartao." },
+        { status: 400 }
+      );
     }
 
     return NextResponse.json(

@@ -70,16 +70,21 @@ export function getExpiryMessage(expiresAt: string | null): string | null {
  * Prepara payload para criação de sessão de checkout
  * Chama a API route server-side, que deve criar a sessão no gateway configurado.
  */
+export interface SubscriptionCardPayload {
+  cardTokenId: string;
+}
+
 export async function createCheckoutSession(
   planId: string,
   _userId: string,
   successUrl: string,
-  cancelUrl: string
-): Promise<{ url: string }> {
+  cancelUrl: string,
+  card: SubscriptionCardPayload
+): Promise<{ ok: boolean; subscriptionId: string | null; status: string | null; redirectUrl: string }> {
   const response = await fetch("/api/subscription/checkout", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ planId, successUrl, cancelUrl }),
+    body: JSON.stringify({ planId, successUrl, cancelUrl, cardTokenId: card.cardTokenId }),
   });
 
   if (!response.ok) {

@@ -1,14 +1,17 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import {
   CheckCircle2,
+  CreditCard,
   Shield,
   Mail,
   Sparkles,
   HelpCircle,
+  Loader2,
   MessageSquare,
   Star,
 } from "lucide-react";
@@ -17,8 +20,47 @@ import { PlanCard } from "@/components/subscription/PlanCard";
 import { SubscriptionManager } from "@/components/subscription/SubscriptionManager";
 import { TestimonialsSection } from "@/components/subscription/TestimonialsSection";
 import { FAQSection } from "@/components/subscription/FAQSection";
+import { useAuth } from "@/hooks/useAuth";
 import { useSubscription } from "@/hooks/useSubscription";
 import { createCheckoutSession } from "@/lib/subscription-helpers";
+
+type MercadoPagoCardFormData = {
+  token?: string;
+};
+
+type MercadoPagoCardForm = {
+  getCardFormData: () => MercadoPagoCardFormData;
+};
+
+type MercadoPagoInstance = {
+  cardForm: (config: {
+    amount: string;
+    iframe: boolean;
+    form: {
+      id: string;
+      cardNumber: { id: string; placeholder: string };
+      expirationDate: { id: string; placeholder: string };
+      securityCode: { id: string; placeholder: string };
+      cardholderName: { id: string; placeholder: string };
+      issuer: { id: string; placeholder: string };
+      installments: { id: string; placeholder: string };
+      identificationType: { id: string; placeholder: string };
+      identificationNumber: { id: string; placeholder: string };
+      cardholderEmail: { id: string; placeholder: string };
+    };
+    callbacks: {
+      onFormMounted?: (error?: unknown) => void;
+      onFetching?: (resource: string) => () => void;
+      onSubmit: (event: Event) => void;
+    };
+  }) => MercadoPagoCardForm;
+};
+
+declare global {
+  interface Window {
+    MercadoPago?: new (publicKey: string, options?: { locale?: string }) => MercadoPagoInstance;
+  }
+}
 
 function FadeIn({
   children,
@@ -39,32 +81,286 @@ function FadeIn({
   );
 }
 
-/* ── Non-subscriber view ────────────────────────────────── */
-function NonSubscriberView() {
+function loadMercadoPagoSdk() {
+  return new Promise<void>((resolve, reject) => {
+    if (typeof window === "undefined") {
+      resolve();
+      return;
+    }
+
+    if (window.MercadoPago) {
+      resolve();
+      return;
+    }
+
+    const existingScript = document.querySelector<HTMLScriptElement>(
+      'script[src="https://sdk.mercadopago.com/js/v2"]'
+    );
+
+    if (existingScript) {
+      existingScript.addEventListener("load", () => resolve(), { once: true });
+      existingScript.addEventListener("error", () => reject(new Error("SDK indisponivel")), {
+        once: true,
+      });
+      return;
+    }
+
+    const script = document.createElement("script");
+    script.src = "https://sdk.mercadopago.com/js/v2";
+    script.async = true;
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error("SDK indisponivel"));
+    document.body.appendChild(script);
+  });
+}
+
+async function getMercadoPagoPublicKey() {
+  const response = await fetch("/api/subscription/public-key", {
+    headers: { Accept: "application/json" },
+  });
+
+  const payload = (await response.json().catch(() => null)) as
+    | { publicKey?: string; error?: string }
+    | null;
+
+  if (!response.ok || !payload?.publicKey) {
+    throw new Error(payload?.error ?? "Pagamento indisponivel no momento.");
+  }
+
+  return payload.publicKey;
+}
+
+function MercadoPagoCardForm({
+  userEmail,
+  onPaymentCreated,
+}: {
+  userEmail: string;
+  onPaymentCreated: () => Promise<void>;
+}) {
+  const router = useRouter();
+  const cardFormRef = useRef<MercadoPagoCardForm | null>(null);
+  const formMountedRef = useRef(false);
+  const [ready, setReady] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [checkoutError, setCheckoutError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+
+    async function mountCardForm() {
+      try {
+        setError(null);
+        const [publicKey] = await Promise.all([getMercadoPagoPublicKey(), loadMercadoPagoSdk()]);
+
+        if (!active || formMountedRef.current || !window.MercadoPago) return;
+
+        const mercadoPago = new window.MercadoPago(publicKey, { locale: "pt-BR" });
+        formMountedRef.current = true;
+        cardFormRef.current = mercadoPago.cardForm({
+          amount: String(PLAN.price),
+          iframe: true,
+          form: {
+            id: "mp-card-form",
+            cardNumber: { id: "mp-card-number", placeholder: "Numero do cartao" },
+            expirationDate: { id: "mp-expiration-date", placeholder: "MM/AA" },
+            securityCode: { id: "mp-security-code", placeholder: "CVV" },
+            cardholderName: { id: "mp-cardholder-name", placeholder: "Nome impresso no cartao" },
+            issuer: { id: "mp-issuer", placeholder: "Banco emissor" },
+            installments: { id: "mp-installments", placeholder: "Parcelas" },
+            identificationType: { id: "mp-identification-type", placeholder: "Documento" },
+            identificationNumber: { id: "mp-identification-number", placeholder: "Numero do documento" },
+            cardholderEmail: { id: "mp-cardholder-email", placeholder: "E-mail" },
+          },
+          callbacks: {
+            onFormMounted: (mountError) => {
+              if (!active) return;
+              if (mountError) {
+                setError("Nao foi possivel carregar o pagamento. Tente recarregar a pagina.");
+                return;
+              }
+              setReady(true);
+            },
+            onFetching: () => {
+              setLoading(true);
+              return () => setLoading(false);
+            },
+            onSubmit: (event) => {
+              event.preventDefault();
+              void (async () => {
+                setLoading(true);
+                setError(null);
+
+                try {
+                  const cardData = cardFormRef.current?.getCardFormData();
+                  const cardTokenId = cardData?.token?.trim();
+
+                  if (!cardTokenId) {
+                    setError("Confira os dados do cartao e tente novamente.");
+                    return;
+                  }
+
+                  const result = await createCheckoutSession(
+                    PLAN.id,
+                    "",
+                    `${window.location.origin}/assinatura?checkout=success`,
+                    `${window.location.origin}/assinatura?checkout=cancelled`,
+                    { cardTokenId }
+                  );
+
+                  await onPaymentCreated();
+                  router.refresh();
+                  window.location.assign(result.redirectUrl || "/assinatura?checkout=success");
+                } catch (submitError) {
+                  setError(
+                    submitError instanceof Error
+                      ? submitError.message
+                      : "Nao foi possivel concluir a assinatura. Confira o cartao e tente novamente."
+                  );
+                } finally {
+                  setLoading(false);
+                }
+              })();
+            },
+          },
+        });
+      } catch (mountError) {
+        if (!active) return;
+        setError(
+          mountError instanceof Error
+            ? mountError.message
+            : "Pagamento indisponivel no momento."
+        );
+      }
+    }
+
+    void mountCardForm();
+
+    return () => {
+      active = false;
+    };
+  }, [onPaymentCreated, router]);
+
+  const inputShell =
+    "flex h-12 w-full items-center rounded-xl border border-border-subtle bg-background-tertiary px-4 text-sm text-content-primary outline-none transition-colors focus-within:border-accent-primary";
+  const nativeInput =
+    "h-12 w-full rounded-xl border border-border-subtle bg-background-tertiary px-4 text-sm text-content-primary outline-none transition-colors placeholder:text-content-disabled focus:border-accent-primary";
+
+  return (
+    <div className="rounded-2xl border border-accent-primary/20 bg-background-secondary p-5 shadow-card">
+      <div className="mb-5 flex items-start justify-between gap-4">
+        <div>
+          <div className="mb-2 flex items-center gap-2">
+            <CreditCard size={18} className="text-accent-secondary" />
+            <h2 className="text-lg font-bold text-content-primary">
+              Pagamento com cartão
+            </h2>
+          </div>
+          <p className="text-sm text-content-secondary">
+            Cobrança mensal de R$15,00. Cancele quando quiser.
+          </p>
+        </div>
+        <div className="flex items-center gap-1.5 rounded-full border border-status-success/30 bg-status-successBg px-3 py-1 text-xs font-semibold text-status-success">
+          <Shield size={12} />
+          Seguro
+        </div>
+      </div>
+
+      <form id="mp-card-form" className="space-y-4">
+        <div className="grid gap-4 md:grid-cols-2">
+          <label className="space-y-2">
+            <span className="text-xs font-bold uppercase tracking-wider text-content-disabled">
+              Numero do cartão
+            </span>
+            <div id="mp-card-number" className={inputShell} />
+          </label>
+          <label className="space-y-2">
+            <span className="text-xs font-bold uppercase tracking-wider text-content-disabled">
+              Nome no cartão
+            </span>
+            <input id="mp-cardholder-name" className={nativeInput} autoComplete="cc-name" />
+          </label>
+          <label className="space-y-2">
+            <span className="text-xs font-bold uppercase tracking-wider text-content-disabled">
+              Validade
+            </span>
+            <div id="mp-expiration-date" className={inputShell} />
+          </label>
+          <label className="space-y-2">
+            <span className="text-xs font-bold uppercase tracking-wider text-content-disabled">
+              CVV
+            </span>
+            <div id="mp-security-code" className={inputShell} />
+          </label>
+          <label className="space-y-2">
+            <span className="text-xs font-bold uppercase tracking-wider text-content-disabled">
+              Documento
+            </span>
+            <div className="grid grid-cols-[120px_1fr] gap-3">
+              <select id="mp-identification-type" className={nativeInput} />
+              <input id="mp-identification-number" className={nativeInput} inputMode="numeric" />
+            </div>
+          </label>
+          <label className="space-y-2">
+            <span className="text-xs font-bold uppercase tracking-wider text-content-disabled">
+              E-mail da cobrança
+            </span>
+            <input
+              id="mp-cardholder-email"
+              className={nativeInput}
+              type="email"
+              defaultValue={userEmail}
+              autoComplete="email"
+            />
+          </label>
+          <label className="space-y-2">
+            <span className="text-xs font-bold uppercase tracking-wider text-content-disabled">
+              Banco emissor
+            </span>
+            <select id="mp-issuer" className={nativeInput} />
+          </label>
+          <label className="space-y-2">
+            <span className="text-xs font-bold uppercase tracking-wider text-content-disabled">
+              Parcelas
+            </span>
+            <select id="mp-installments" className={nativeInput} />
+          </label>
+        </div>
+
+        {error && (
+          <p className="rounded-xl border border-status-error/30 bg-status-errorBg px-4 py-3 text-sm text-status-error">
+            {error}
+          </p>
+        )}
+
+        <button
+          type="submit"
+          disabled={!ready || loading}
+          className="inline-flex h-14 w-full items-center justify-center gap-2 rounded-2xl bg-accent-primary px-6 text-sm font-bold text-white shadow-glow transition-all hover:bg-accent-primaryHover hover:shadow-glowStrong disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {loading ? (
+            <>
+              <Loader2 size={18} className="animate-spin" />
+              Processando...
+            </>
+          ) : (
+            <>
+              <CheckCircle2 size={18} />
+              Confirmar assinatura mensal
+            </>
+          )}
+        </button>
+      </form>
+    </div>
+  );
+}
+
+/* ── Non-subscriber view ────────────────────────────────── */
+function NonSubscriberView({ onSubscriptionChanged }: { onSubscriptionChanged: () => Promise<void> }) {
+  const paymentRef = useRef<HTMLDivElement | null>(null);
+  const { user } = useAuth();
 
   const handleSubscribe = async () => {
-    setLoading(true);
-    setCheckoutError(null);
-
-    try {
-      const { url } = await createCheckoutSession(
-        PLAN.id,
-        "",
-        `${window.location.origin}/assinatura?checkout=success`,
-        `${window.location.origin}/assinatura?checkout=cancelled`
-      );
-      window.location.assign(url);
-    } catch (error) {
-      setCheckoutError(
-        error instanceof Error
-          ? error.message
-          : "Checkout ainda nao configurado. Conecte o gateway de pagamento antes de vender assinaturas."
-      );
-    } finally {
-      setLoading(false);
-    }
+    paymentRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
   };
 
   return (
@@ -135,17 +431,10 @@ function NonSubscriberView() {
             <div className="flex flex-col sm:flex-row gap-3 justify-center">
               <button
                 onClick={handleSubscribe}
-                disabled={loading}
                 className="inline-flex items-center justify-center gap-2 h-14 px-8 rounded-2xl bg-accent-primary text-white font-bold text-base shadow-glow hover:bg-accent-primaryHover hover:shadow-glowStrong transition-all duration-200 disabled:opacity-70"
               >
-                {loading ? (
-                  <div className="w-5 h-5 rounded-full border-2 border-white border-t-transparent animate-spin" />
-                ) : (
-                  <>
-                    <CheckCircle2 size={18} />
-                    Assinar agora — R$15/mês
-                  </>
-                )}
+                <CheckCircle2 size={18} />
+                Assinar agora — R$15/mês
               </button>
               <Link
                 href="/aulas"
@@ -154,9 +443,6 @@ function NonSubscriberView() {
                 Ver conteúdo grátis
               </Link>
             </div>
-            {checkoutError && (
-              <p className="mt-4 text-sm text-status-warning">{checkoutError}</p>
-            )}
 
             {/* Trust */}
             <div className="flex items-center justify-center gap-4 mt-6">
@@ -190,6 +476,16 @@ function NonSubscriberView() {
             plan={PLAN}
             isSubscriber={false}
             onSubscribe={handleSubscribe}
+          />
+        </div>
+      </FadeIn>
+
+      {/* ── Payment form ─────────────────────────── */}
+      <FadeIn delay={0.05}>
+        <div ref={paymentRef} className="mx-auto max-w-3xl scroll-mt-24">
+          <MercadoPagoCardForm
+            userEmail={user?.email ?? ""}
+            onPaymentCreated={onSubscriptionChanged}
           />
         </div>
       </FadeIn>
@@ -405,7 +701,7 @@ function SubscriberView() {
 
 /* ── Main export ────────────────────────────────────────── */
 export default function AssinaturaPage() {
-  const { isSubscriber, loading } = useSubscription();
+  const { isSubscriber, loading, refresh } = useSubscription();
 
   if (loading) {
     return (
@@ -417,7 +713,7 @@ export default function AssinaturaPage() {
 
   return (
     <div className="px-4 lg:px-6 py-6 max-w-[1400px] mx-auto">
-      {isSubscriber ? <SubscriberView /> : <NonSubscriberView />}
+      {isSubscriber ? <SubscriberView /> : <NonSubscriberView onSubscriptionChanged={refresh} />}
     </div>
   );
 }

@@ -179,7 +179,7 @@ export function buildSubscriptionExternalReference(userId: string, planId: strin
   return `dr-marcelopsiquiatra:${userId}:${planId}`;
 }
 
-export async function createMercadoPagoSubscriptionCheckout(params: {
+export async function createMercadoPagoSubscription(params: {
   userId: string;
   payerEmail: string;
   planId: string;
@@ -187,6 +187,8 @@ export async function createMercadoPagoSubscriptionCheckout(params: {
   amount: number;
   currencyId?: string;
   backUrl: string;
+  cardTokenId: string;
+  idempotencyKey: string;
 }) {
   const config = getMercadoPagoConfig();
   const externalReference = buildSubscriptionExternalReference(params.userId, params.planId);
@@ -197,6 +199,7 @@ export async function createMercadoPagoSubscriptionCheckout(params: {
     external_reference: externalReference,
     payer_email: params.payerEmail,
     back_url: params.backUrl,
+    card_token_id: params.cardTokenId,
     status: "authorized",
     auto_recurring: {
       frequency: 1,
@@ -223,15 +226,11 @@ export async function createMercadoPagoSubscriptionCheckout(params: {
   >("/preapproval", {
     method: "POST",
     body,
-    idempotencyKey: `mp-sub-${params.userId}-${params.planId}`,
+    idempotencyKey: params.idempotencyKey,
   });
 
   const checkoutUrl =
     response.init_point ?? response.sandbox_init_point ?? response.back_url ?? null;
-
-  if (!checkoutUrl) {
-    throw new Error("Mercado Pago nao retornou init_point para a assinatura.");
-  }
 
   return {
     resource: response,
