@@ -41,7 +41,10 @@ function mapSupabaseUser(user: User): AuthUser {
     name,
     email: user.email ?? "",
     avatar: user.user_metadata?.avatar_url,
-    plan: user.app_metadata?.plan === "assinante" ? "assinante" : "gratuito",
+    plan:
+      role === "admin" || user.app_metadata?.plan === "assinante"
+        ? "assinante"
+        : "gratuito",
     role,
     joinedAt: user.created_at,
     emailVerified: Boolean(user.email_confirmed_at),

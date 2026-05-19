@@ -62,7 +62,7 @@ export const getCurrentUser = cache(async (): Promise<AuthUser | null> => {
     email: user.email ?? "",
     name,
     avatar: profile?.avatar_url ?? user.user_metadata?.avatar_url,
-    plan: subscription.isActive ? "assinante" : "gratuito",
+    plan: role === "admin" || subscription.isActive ? "assinante" : "gratuito",
     role,
     joinedAt: profile?.created_at ?? user.created_at,
     emailVerified: Boolean(user.email_confirmed_at),

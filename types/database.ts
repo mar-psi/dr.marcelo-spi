@@ -542,6 +542,10 @@ export interface Database {
           metadata: Json;
           sent_to_count: number;
           sent_at: string | null;
+          expires_at: string | null;
+          audience_created_before: string | null;
+          archived_at: string | null;
+          archived_by: string | null;
           created_by: string | null;
           created_at: string;
         };
@@ -557,6 +561,10 @@ export interface Database {
           metadata?: Json;
           sent_to_count?: number;
           sent_at?: string | null;
+          expires_at?: string | null;
+          audience_created_before?: string | null;
+          archived_at?: string | null;
+          archived_by?: string | null;
           created_by?: string | null;
           created_at?: string;
         };
@@ -571,6 +579,10 @@ export interface Database {
           metadata?: Json;
           sent_to_count?: number;
           sent_at?: string | null;
+          expires_at?: string | null;
+          audience_created_before?: string | null;
+          archived_at?: string | null;
+          archived_by?: string | null;
           created_by?: string | null;
         };
         Relationships: [

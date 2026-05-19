@@ -52,6 +52,18 @@ export async function GET() {
     const user = await requireCurrentUser();
     const admin = createSupabaseAdminClient();
     const status = await getCurrentSubscription(user.id);
+    const effectiveStatus =
+      user.role === "admin"
+        ? {
+            ...status,
+            isActive: true,
+            status: "active" as const,
+            planId: status.planId ?? "admin-access",
+            expiresAt: status.expiresAt,
+            nextBillingDate: status.nextBillingDate,
+            cancelAtPeriodEnd: false,
+          }
+        : status;
     const { data: subscriptionRow } = await admin
       .from("subscriptions")
       .select("*")
@@ -68,8 +80,26 @@ export async function GET() {
       .limit(24);
 
     return NextResponse.json({
-      ...status,
-      subscription: mapSubscription(status, (subscriptionRow as SubscriptionRow | null) ?? null),
+      ...effectiveStatus,
+      subscription:
+        user.role === "admin"
+          ? {
+              id: "admin-access",
+              isActive: true,
+              planName: "Acesso administrativo",
+              startDate: user.joinedAt,
+              nextBillingDate: "",
+              amount: 0,
+              status: "ativo",
+              cancelAtPeriodEnd: false,
+              provider: null,
+              paymentMethodLabel: null,
+              canCancel: false,
+              canPause: false,
+              canResume: false,
+              canUpdatePaymentMethod: false,
+            }
+          : mapSubscription(effectiveStatus, (subscriptionRow as SubscriptionRow | null) ?? null),
       billingRecords: ((transactions ?? []) as PaymentTransactionRow[]).map((record) => ({
         id: record.id,
         date: record.paid_at ?? record.due_date ?? record.created_at,

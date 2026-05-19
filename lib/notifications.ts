@@ -14,6 +14,7 @@ export interface NotificationItem {
   kind: string;
   ctaUrl: string | null;
   sentAt: string;
+  expiresAt: string | null;
   sentToCount: number;
   readAt: string | null;
   unread: boolean;
@@ -34,6 +35,7 @@ function normalizeNotification(row: NotificationRow, readAt: string | null): Not
     kind: row.kind,
     ctaUrl: row.cta_url,
     sentAt: row.sent_at ?? row.created_at,
+    expiresAt: row.expires_at,
     sentToCount: row.sent_to_count,
     readAt,
     unread: !readAt,
@@ -45,11 +47,22 @@ export async function fetchNotificationsForUser(
   limit = 20
 ): Promise<NotificationItem[]> {
   const supabase = createSupabaseBrowserClient();
+  const now = new Date().toISOString();
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("created_at")
+    .eq("id", userId)
+    .maybeSingle();
+
+  const createdAt = profile?.created_at ?? now;
 
   const notificationsResponse = await supabase
     .from("notifications")
-    .select("id,user_id,title,message,target,kind,cta_url,dedupe_key,metadata,sent_to_count,sent_at,created_by,created_at")
+    .select("id,user_id,title,message,target,kind,cta_url,dedupe_key,metadata,sent_to_count,sent_at,expires_at,audience_created_before,archived_at,archived_by,created_by,created_at")
     .not("sent_at", "is", null)
+    .is("archived_at", null)
+    .or(`expires_at.is.null,expires_at.gt.${now}`)
+    .or(`audience_created_before.is.null,audience_created_before.gte.${createdAt},user_id.eq.${userId}`)
     .order("sent_at", { ascending: false })
     .limit(limit);
 
@@ -141,10 +154,11 @@ export async function fetchNotificationHistory() {
 
   const notificationsResponse = await supabase
     .from("notifications")
-    .select("id,user_id,title,message,target,kind,cta_url,dedupe_key,metadata,sent_to_count,sent_at,created_by,created_at")
+    .select("id,user_id,title,message,target,kind,cta_url,dedupe_key,metadata,sent_to_count,sent_at,expires_at,audience_created_before,archived_at,archived_by,created_by,created_at")
     .not("sent_at", "is", null)
     .eq("kind", "manual")
     .is("user_id", null)
+    .is("archived_at", null)
     .order("sent_at", { ascending: false })
     .limit(50);
 
@@ -186,8 +200,26 @@ export async function fetchNotificationHistory() {
       message: row.message,
       target: row.target,
       sentAt: row.sent_at ?? row.created_at,
+      expiresAt: row.expires_at,
+      expired:
+        row.expires_at !== null && new Date(row.expires_at).getTime() <= Date.now(),
       sentTo: sentToCount,
       openRate,
     };
   });
+}
+
+export async function archiveNotification(notificationId: string, userId: string) {
+  const supabase = createSupabaseBrowserClient();
+  const { error } = await supabase
+    .from("notifications")
+    .update({
+      archived_at: new Date().toISOString(),
+      archived_by: userId,
+    })
+    .eq("id", notificationId);
+
+  if (error) {
+    throw new Error(error.message);
+  }
 }

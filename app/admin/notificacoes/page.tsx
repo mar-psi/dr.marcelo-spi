@@ -10,11 +10,14 @@ import {
   Crown,
   X,
   CheckCircle2,
+  Archive,
+  Clock,
 } from "lucide-react";
 import { Button, Input, Select, useToast } from "@/components/ui";
 import { formatDate, cn } from "@/lib/utils";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import {
+  archiveNotification,
   fetchNotificationAudienceCounts,
   fetchNotificationHistory,
 } from "@/lib/notifications";
@@ -22,6 +25,7 @@ import { useAuth } from "@/hooks/useAuth";
 import type { NotificationTarget } from "@/types/database";
 
 type HistoryItem = Awaited<ReturnType<typeof fetchNotificationHistory>>[number];
+type ExpirationPreset = "7" | "15" | "30" | "never";
 
 const targetLabel: Record<NotificationTarget, string> = {
   all: "Todos os usuários",
@@ -34,6 +38,19 @@ const targetIcon: Record<NotificationTarget, React.ElementType> = {
   subscribers: Crown,
   free: Users,
 };
+
+const expirationOptions: { value: ExpirationPreset; label: string }[] = [
+  { value: "7", label: "Expira em 7 dias" },
+  { value: "15", label: "Expira em 15 dias" },
+  { value: "30", label: "Expira em 30 dias" },
+  { value: "never", label: "Sem expiração" },
+];
+
+function buildExpiration(sentAt: Date, preset: ExpirationPreset) {
+  if (preset === "never") return null;
+  const days = Number(preset);
+  return new Date(sentAt.getTime() + days * 24 * 60 * 60 * 1000).toISOString();
+}
 
 function SendNotificationModal({
   isOpen,
@@ -51,6 +68,7 @@ function SendNotificationModal({
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
   const [target, setTarget] = useState<NotificationTarget>("all");
+  const [expiration, setExpiration] = useState<ExpirationPreset>("7");
   const [title, setTitle] = useState("");
   const [message, setMessage] = useState("");
   const [counts, setCounts] = useState({ all: 0, subscribers: 0, free: 0 });
@@ -79,6 +97,7 @@ function SendNotificationModal({
   const reset = () => {
     setSent(false);
     setTarget("all");
+    setExpiration("7");
     setTitle("");
     setMessage("");
   };
@@ -94,13 +113,16 @@ function SendNotificationModal({
 
     setLoading(true);
     const targetCount = counts[target];
+    const sentAt = new Date();
 
     const { error } = await supabase.from("notifications").insert({
       title: title.trim(),
       message: message.trim(),
       target,
       sent_to_count: targetCount,
-      sent_at: new Date().toISOString(),
+      sent_at: sentAt.toISOString(),
+      expires_at: buildExpiration(sentAt, expiration),
+      audience_created_before: sentAt.toISOString(),
       created_by: user.id,
     });
 
@@ -170,6 +192,21 @@ function SendNotificationModal({
                     <span className="font-bold text-accent-secondary">
                       {counts[target].toLocaleString("pt-BR")} pessoas
                     </span>
+                  </p>
+                </div>
+
+                <Select
+                  label="Validade"
+                  value={expiration}
+                  onChange={(event) => setExpiration(event.target.value as ExpirationPreset)}
+                  options={expirationOptions}
+                />
+
+                <div className="flex items-start gap-2 p-3 rounded-xl bg-background-tertiary/60 border border-border-subtle">
+                  <Clock size={13} className="mt-0.5 text-content-secondary" />
+                  <p className="text-xs text-content-secondary leading-relaxed">
+                    Apenas usuários que já existiam no momento do envio poderão receber esta
+                    notificação.
                   </p>
                 </div>
 
@@ -245,6 +282,8 @@ function SendNotificationModal({
 }
 
 export default function AdminNotificacoesPage() {
+  const { user } = useAuth();
+  const { toast } = useToast();
   const [modalOpen, setModalOpen] = useState(false);
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -262,6 +301,27 @@ export default function AdminNotificacoesPage() {
   useEffect(() => {
     void loadHistory();
   }, [loadHistory]);
+
+  const handleArchive = async (notification: HistoryItem) => {
+    if (!user?.id) return;
+
+    const confirmed = window.confirm(
+      `Arquivar a notificação "${notification.title}"? Ela deixará de aparecer para os usuários.`
+    );
+    if (!confirmed) return;
+
+    try {
+      await archiveNotification(notification.id, user.id);
+      setHistory((current) => current.filter((item) => item.id !== notification.id));
+      toast({ variant: "success", title: "Notificação arquivada" });
+    } catch (error) {
+      toast({
+        variant: "error",
+        title: "Não foi possível arquivar",
+        message: error instanceof Error ? error.message : "Tente novamente.",
+      });
+    }
+  };
 
   return (
     <div className="px-5 lg:px-8 py-6 max-w-[1400px] mx-auto">
@@ -302,9 +362,21 @@ export default function AdminNotificacoesPage() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-start justify-between gap-3 mb-1">
                       <h3 className="text-sm font-bold text-content-primary">{notification.title}</h3>
-                      <span className="text-xs text-content-disabled shrink-0">
-                        {formatDate(notification.sentAt.split("T")[0])}
-                      </span>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span
+                          className={cn(
+                            "rounded-full px-2 py-0.5 text-[10px] font-bold",
+                            notification.expired
+                              ? "bg-status-warningBg text-status-warning"
+                              : "bg-status-successBg text-status-success"
+                          )}
+                        >
+                          {notification.expired ? "Expirada" : "Ativa"}
+                        </span>
+                        <span className="text-xs text-content-disabled">
+                          {formatDate(notification.sentAt.split("T")[0])}
+                        </span>
+                      </div>
                     </div>
                     <p className="text-sm text-content-secondary mb-3 leading-relaxed">
                       {notification.message}
@@ -328,6 +400,24 @@ export default function AdminNotificacoesPage() {
                         <CheckCircle2 size={10} />
                         <span>{notification.openRate}% abertura</span>
                       </div>
+                      <div className="flex items-center gap-1 text-xs text-content-secondary">
+                        <Clock size={10} className="text-content-disabled" />
+                        <span>
+                          {notification.expiresAt
+                            ? `Expira em ${formatDate(notification.expiresAt.split("T")[0])}`
+                            : "Sem expiração"}
+                        </span>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="ml-auto text-content-secondary hover:text-status-warning"
+                        leftIcon={<Archive size={12} />}
+                        onClick={() => void handleArchive(notification)}
+                      >
+                        Arquivar
+                      </Button>
                     </div>
                   </div>
                 </div>
