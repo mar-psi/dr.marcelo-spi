@@ -77,6 +77,14 @@ function AddContentModal({
   const youtubeId = extractYouTubeVideoId(videoUrl);
   const youtubeThumbnail = youtubeId ? getYouTubeThumbnailUrl(youtubeId) : null;
 
+  const [isAnimated, setIsAnimated] = useState(false);
+
+  useEffect(() => {
+    if (!isOpen) {
+      setIsAnimated(false);
+    }
+  }, [isOpen]);
+
   const createSlug = (value: string) =>
     value
       .normalize("NFD")
@@ -320,6 +328,8 @@ function AddContentModal({
             initial={{ opacity: 0, scale: 0.95, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 20 }}
+            onAnimationComplete={() => setIsAnimated(true)}
+            style={{ transform: isAnimated ? "none" : undefined }}
             className="relative z-10 w-full max-w-2xl max-h-[90vh] overflow-y-auto bg-background-secondary rounded-2xl border border-border-subtle shadow-2xl flex flex-col"
             onClick={(e) => e.stopPropagation()}
           >

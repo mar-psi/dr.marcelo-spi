@@ -72,7 +72,13 @@ function SendNotificationModal({
   const [title, setTitle] = useState("");
   const [message, setMessage] = useState("");
   const [counts, setCounts] = useState({ all: 0, subscribers: 0, free: 0 });
+  const [isAnimated, setIsAnimated] = useState(false);
 
+  useEffect(() => {
+    if (!isOpen) {
+      setIsAnimated(false);
+    }
+  }, [isOpen]);
   useEffect(() => {
     if (!isOpen) return;
     let active = true;
@@ -156,6 +162,8 @@ function SendNotificationModal({
             initial={{ opacity: 0, scale: 0.93, y: 16 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.93, y: 16 }}
+            onAnimationComplete={() => setIsAnimated(true)}
+            style={{ transform: isAnimated ? "none" : undefined }}
             className="relative z-10 w-full max-w-md bg-background-secondary rounded-2xl border border-border-subtle shadow-card"
             onClick={(event) => event.stopPropagation()}
           >
