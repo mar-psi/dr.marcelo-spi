@@ -275,7 +275,7 @@ export default function AdminStoriesPage() {
             {stories.length} stories · {publishedCount} publicados · {stories.reduce((sum, story) => sum + story.views, 0).toLocaleString("pt-BR")} visualizações
           </p>
         </div>
-        <Button variant="primary" size="sm" leftIcon={<Plus size={14} />} onClick={handleOpenUpload}>
+        <Button variant="primary" size="sm" leftIcon={<Plus size={14} />} onClick={handleOpenUpload} className="whitespace-nowrap shrink-0">
           Novo story
         </Button>
       </div>

@@ -660,6 +660,7 @@ export default function AdminQuizzesPage() {
           size="sm"
           leftIcon={<Plus size={14} />}
           onClick={() => setModalQuiz(null)}
+          className="whitespace-nowrap shrink-0"
         >
           Novo quiz
         </Button>

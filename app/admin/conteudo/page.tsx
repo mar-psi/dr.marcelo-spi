@@ -626,7 +626,7 @@ function AddContentModal({
                   onClick={() => handleSubmit()}
                   loading={loading}
                   disabled={!isFormValid || loading}
-                  className={cn("px-6", isFormValid && "shadow-glowStrong")}
+                  className={cn("px-6 whitespace-nowrap shrink-0", isFormValid && "shadow-glowStrong")}
                 >
                   + Publicar conteúdo
                 </Button>
@@ -745,6 +745,7 @@ export default function AdminConteudoPage() {
           size="sm"
           leftIcon={<Plus size={15} />}
           onClick={() => setModalOpen(true)}
+          className="whitespace-nowrap shrink-0"
         >
           Novo conteúdo
         </Button>
