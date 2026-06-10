@@ -39,11 +39,22 @@ export function StoryCard({ story, onClick }: StoryCardProps) {
     >
       {/* Thumbnail 9:16 */}
       <div className="aspect-story relative overflow-hidden">
-        <img
-          src={story.thumbnailUrl}
-          alt={story.title}
-          className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-        />
+        {story.thumbnailIsVideo ? (
+          <video
+            src={story.thumbnailUrl}
+            aria-label={story.title}
+            className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+            muted
+            playsInline
+            preload="auto"
+          />
+        ) : (
+          <img
+            src={story.thumbnailUrl}
+            alt={story.title}
+            className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+          />
+        )}
 
         {/* Gradient */}
         <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/20 to-black/40" />

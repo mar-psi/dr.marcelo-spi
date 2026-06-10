@@ -5,6 +5,7 @@ import { motion } from "framer-motion";
 import {
   Archive,
   Eye,
+  ImagePlus,
   Loader2,
   Plus,
   Search,
@@ -13,6 +14,7 @@ import {
   X,
 } from "lucide-react";
 import { StoryUpload, type StoryUploadData } from "@/components/stories/StoryUpload";
+import { StoryCoverUpload } from "@/components/stories/StoryCoverUpload";
 import { Badge, Button, Input, useToast } from "@/components/ui";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { cn, formatDate } from "@/lib/utils";
@@ -29,6 +31,7 @@ interface AdminStoryItem {
   category: StoryRow["category"];
   status: StoryRow["status"];
   mediaPath: string | null;
+  thumbnailPath: string | null;
   mediaUrl: string | null;
   duration: number;
   views: number;
@@ -101,6 +104,7 @@ export default function AdminStoriesPage() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StoryStatusFilter>("todos");
   const [uploadOpen, setUploadOpen] = useState(false);
+  const [coverStory, setCoverStory] = useState<AdminStoryItem | null>(null);
   const [loading, setLoading] = useState(true);
 
   const loadStories = async () => {
@@ -130,15 +134,16 @@ export default function AdminStoriesPage() {
 
     const nextStories = await Promise.all(
       (storiesResponse.data ?? []).map(async (story) => {
-        const mediaPath = story.thumbnail_path ?? story.media_path;
+        const displayPath = story.thumbnail_path ?? story.media_path;
         return {
           id: story.id,
           title: story.title,
           theme: story.theme,
           category: story.category,
           status: story.status,
-          mediaPath,
-          mediaUrl: await getSignedMediaUrl(mediaPath),
+          mediaPath: story.media_path,
+          thumbnailPath: story.thumbnail_path,
+          mediaUrl: await getSignedMediaUrl(displayPath),
           duration: story.duration_seconds,
           views: viewsByStory.get(story.id) ?? 0,
           publishedAt: story.published_at,
@@ -204,6 +209,7 @@ export default function AdminStoriesPage() {
         : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
     const path = `${user.id}/${fileId}-${safeFileName(data.file.name)}`;
     let uploadedPath: string | null = null;
+    let uploadedThumbnailPath: string | null = null;
 
     const uploadResult = await supabase.storage
       .from("story-media")
@@ -219,6 +225,28 @@ export default function AdminStoriesPage() {
     uploadedPath = uploadResult.data.path;
 
     const isImage = data.file.type.startsWith("image/");
+    if (!isImage) {
+      if (!data.generatedThumbnail) {
+        await supabase.storage.from("story-media").remove([uploadedPath]);
+        throw new Error("Não foi possível gerar a capa automática deste vídeo.");
+      }
+
+      const thumbnailPath = `${user.id}/${fileId}-cover.webp`;
+      const thumbnailUpload = await supabase.storage
+        .from("story-media")
+        .upload(thumbnailPath, data.generatedThumbnail, {
+          cacheControl: "31536000",
+          contentType: "image/webp",
+          upsert: false,
+        });
+
+      if (thumbnailUpload.error) {
+        await supabase.storage.from("story-media").remove([uploadedPath]);
+        throw new Error(thumbnailUpload.error.message);
+      }
+      uploadedThumbnailPath = thumbnailUpload.data.path;
+    }
+
     const now = new Date();
     const expiresAt = new Date(now.getTime() + 24 * 60 * 60 * 1000);
 
@@ -229,7 +257,7 @@ export default function AdminStoriesPage() {
       status: "published",
       access: data.access,
       media_path: uploadedPath,
-      thumbnail_path: isImage ? uploadedPath : null,
+      thumbnail_path: isImage ? uploadedPath : uploadedThumbnailPath,
       duration_seconds: data.durationSeconds || (isImage ? 15 : 0),
       published_at: now.toISOString(),
       expires_at: expiresAt.toISOString(),
@@ -238,7 +266,9 @@ export default function AdminStoriesPage() {
 
     if (insertResult.error) {
       if (uploadedPath) {
-        await supabase.storage.from("story-media").remove([uploadedPath]);
+        await supabase.storage
+          .from("story-media")
+          .remove([uploadedPath, uploadedThumbnailPath].filter((path): path is string => Boolean(path)));
       }
       throw new Error(insertResult.error.message);
     }
@@ -263,6 +293,54 @@ export default function AdminStoriesPage() {
     }
 
     toast({ variant: "success", title: "Story arquivado" });
+    await loadStories();
+  };
+
+  const updateStoryCover = async (cover: Blob) => {
+    if (!coverStory) return;
+
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+
+    if (userError || !user) {
+      throw new Error("Faça login novamente antes de salvar a capa.");
+    }
+
+    const fileId =
+      typeof crypto.randomUUID === "function"
+        ? crypto.randomUUID()
+        : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    const newPath = `${user.id}/${coverStory.id}/cover-${fileId}.webp`;
+
+    const uploadResult = await supabase.storage.from("story-media").upload(newPath, cover, {
+      cacheControl: "31536000",
+      contentType: "image/webp",
+      upsert: false,
+    });
+
+    if (uploadResult.error) throw new Error(uploadResult.error.message);
+
+    const updateResult = await supabase
+      .from("stories")
+      .update({ thumbnail_path: uploadResult.data.path })
+      .eq("id", coverStory.id);
+
+    if (updateResult.error) {
+      await supabase.storage.from("story-media").remove([uploadResult.data.path]);
+      throw new Error(updateResult.error.message);
+    }
+
+    if (coverStory.thumbnailPath && coverStory.thumbnailPath !== coverStory.mediaPath) {
+      await supabase.storage.from("story-media").remove([coverStory.thumbnailPath]);
+    }
+
+    toast({
+      variant: "success",
+      title: "Capa atualizada",
+      message: "A nova capa já está disponível para os alunos.",
+    });
     await loadStories();
   };
 
@@ -358,7 +436,7 @@ export default function AdminStoriesPage() {
             >
               <div className="relative" style={{ aspectRatio: "9/16" }}>
                 {story.mediaUrl ? (
-                  isVideoPath(story.mediaPath) ? (
+                  isVideoPath(story.thumbnailPath ?? story.mediaPath) ? (
                     <video
                       src={story.mediaUrl}
                       className="w-full h-full object-cover"
@@ -408,7 +486,7 @@ export default function AdminStoriesPage() {
                   </div>
                 </div>
 
-                <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center gap-2 transition-opacity duration-200">
+                <div className="absolute inset-0 bg-black/50 opacity-100 md:opacity-0 md:group-hover:opacity-100 flex items-center justify-center gap-2 transition-opacity duration-200">
                   {story.mediaUrl && (
                     <a
                       href={story.mediaUrl}
@@ -420,6 +498,14 @@ export default function AdminStoriesPage() {
                       <Eye size={14} />
                     </a>
                   )}
+                  <button
+                    onClick={() => setCoverStory(story)}
+                    className="w-8 h-8 rounded-full bg-background-secondary flex items-center justify-center text-accent-secondary hover:text-content-primary transition-colors"
+                    aria-label={story.thumbnailPath ? "Trocar capa" : "Adicionar capa"}
+                    title={story.thumbnailPath ? "Trocar capa" : "Adicionar capa"}
+                  >
+                    <ImagePlus size={14} />
+                  </button>
                   {story.status !== "archived" && (
                     <button
                       onClick={() => void archiveStory(story.id)}
@@ -441,6 +527,13 @@ export default function AdminStoriesPage() {
         onClose={() => setUploadOpen(false)}
         onSubmit={handleSubmit}
         mobileOnly
+      />
+      <StoryCoverUpload
+        isOpen={Boolean(coverStory)}
+        storyTitle={coverStory?.title ?? ""}
+        currentCoverUrl={coverStory?.thumbnailPath ? coverStory.mediaUrl : null}
+        onClose={() => setCoverStory(null)}
+        onSubmit={updateStoryCover}
       />
     </div>
   );

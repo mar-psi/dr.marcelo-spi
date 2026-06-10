@@ -94,6 +94,7 @@ export default function StoriesPage() {
             title: story.title,
             theme: story.theme,
             thumbnailUrl: thumbUrl,
+            thumbnailIsVideo: !story.thumbnail_path && Boolean(story.media_path),
             videoUrl: story.media_path && story.media_path !== story.thumbnail_path ? mediaUrl ?? undefined : undefined,
             duration: story.duration_seconds || 15,
             publishedAt: story.published_at ?? story.created_at,

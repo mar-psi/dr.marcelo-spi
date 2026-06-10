@@ -206,7 +206,7 @@ export function StoryViewer({
               {current.videoUrl && (
                 <video
                   src={current.videoUrl}
-                  poster={current.thumbnailUrl}
+                  poster={current.thumbnailIsVideo ? undefined : current.thumbnailUrl}
                   className="h-full w-full object-cover"
                   autoPlay
                   muted={muted}

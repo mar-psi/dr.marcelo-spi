@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Camera, Upload, X, ImageIcon, Video } from "lucide-react";
 import { Button, Input, Select } from "@/components/ui";
 import { cn } from "@/lib/utils";
+import { createVideoThumbnail } from "@/lib/video-thumbnail";
 
 interface StoryUploadProps {
   isOpen: boolean;
@@ -15,6 +16,7 @@ interface StoryUploadProps {
 
 export interface StoryUploadData {
   file: File | null;
+  generatedThumbnail: Blob | null;
   title: string;
   theme: string;
   category: "doencas" | "transtornos" | "curiosidades";
@@ -57,6 +59,7 @@ export function StoryUpload({ isOpen, onClose, mobileOnly = false, onSubmit }: S
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [isVideo, setIsVideo] = useState(false);
+  const [generatedThumbnail, setGeneratedThumbnail] = useState<Blob | null>(null);
   const [title, setTitle] = useState("");
   const [theme, setTheme] = useState("");
   const [category, setCategory] = useState<StoryUploadData["category"]>("curiosidades");
@@ -64,6 +67,7 @@ export function StoryUpload({ isOpen, onClose, mobileOnly = false, onSubmit }: S
   const [durationSeconds, setDurationSeconds] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [processing, setProcessing] = useState(false);
   const [error, setError] = useState("");
 
   const handleFile = async (f: File) => {
@@ -76,11 +80,26 @@ export function StoryUpload({ isOpen, onClose, mobileOnly = false, onSubmit }: S
       setError("O arquivo deve ter no máximo 100MB.");
       return;
     }
-    setFile(f);
-    const url = URL.createObjectURL(f);
-    setPreview(url);
-    setIsVideo(f.type.startsWith("video/"));
-    setDurationSeconds(await getVideoDuration(f));
+    setProcessing(true);
+    try {
+      const videoFile = f.type.startsWith("video/");
+      const [duration, thumbnail] = await Promise.all([
+        getVideoDuration(f),
+        videoFile ? createVideoThumbnail(f) : Promise.resolve(null),
+      ]);
+      if (videoFile && !thumbnail) throw new Error("Não foi possível gerar a capa automática.");
+
+      if (preview) URL.revokeObjectURL(preview);
+      setFile(f);
+      setPreview(URL.createObjectURL(f));
+      setIsVideo(videoFile);
+      setGeneratedThumbnail(thumbnail);
+      setDurationSeconds(duration);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Não foi possível processar o story.");
+    } finally {
+      setProcessing(false);
+    }
   };
 
   const handleDrop = (e: React.DragEvent) => {
@@ -96,7 +115,10 @@ export function StoryUpload({ isOpen, onClose, mobileOnly = false, onSubmit }: S
     setUploading(true);
     setError("");
     try {
-      await onSubmit?.({ file, title, theme, category, access, durationSeconds });
+      if (isVideo && !generatedThumbnail) {
+        throw new Error("A capa automática ainda não foi gerada.");
+      }
+      await onSubmit?.({ file, generatedThumbnail, title, theme, category, access, durationSeconds });
       onClose();
       reset();
     } catch (err) {
@@ -116,6 +138,7 @@ export function StoryUpload({ isOpen, onClose, mobileOnly = false, onSubmit }: S
     setAccess("subscriber");
     setDurationSeconds(0);
     setIsVideo(false);
+    setGeneratedThumbnail(null);
     setError("");
   };
 
@@ -241,7 +264,7 @@ export function StoryUpload({ isOpen, onClose, mobileOnly = false, onSubmit }: S
                         <X size={12} />
                       </button>
                       <p className="absolute bottom-2 left-2 right-2 text-[10px] text-white/80 text-center leading-tight">
-                        Preview em tempo real
+                        {processing ? "Gerando capa automática..." : "Preview em tempo real"}
                       </p>
                     </div>
                   )}
@@ -325,7 +348,7 @@ export function StoryUpload({ isOpen, onClose, mobileOnly = false, onSubmit }: S
                     size="sm"
                     type="submit"
                     loading={uploading}
-                    disabled={!file || !title}
+                    disabled={processing || !file || !title}
                     leftIcon={<Upload size={14} />}
                   >
                     Publicar Story

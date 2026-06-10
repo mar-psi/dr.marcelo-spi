@@ -3,6 +3,7 @@ export interface StoryItem {
   title: string;
   theme: string;
   thumbnailUrl: string;
+  thumbnailIsVideo?: boolean;
   videoUrl?: string;
   duration: number;
   publishedAt: string;
